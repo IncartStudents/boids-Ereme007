@@ -1,134 +1,47 @@
 #include <windows.h>
+#include <stdio.h>
 #include <gl/gl.h>
 #include <math.h>
+
+
 LRESULT CALLBACK WindowProc(HWND, UINT, WPARAM, LPARAM);
 void EnableOpenGL(HWND hwnd, HDC*, HGLRC*);
 void DisableOpenGL(HWND, HDC, HGLRC);
 
 
-//размер окна
-int width = 800;
-int height = 300;
-float koef;
+float Max_Speed = 0.015;
 float Radi = 0.05;
-
-
-//ВОТ ТУТ СКОРОСТЬ
-
-float Change_x = 0.01;
-float Change_y = 0.01;
+int Cout = 7;
+float Vision = 0.15;
 
 
 
-void DrawTr(int center_x, int center_y)
+float Alig_X = 0;
+float Alig_Y = 0;
+float Average_Alig_X = 0;
+float Average_Alig_Y = 0;
+int In_Vision = 0;
+
+
+
+void Fun_Speed(float dx, float dy)
 {
-    float x, y;
-        float theta = 0 ;
-        float Speed = sqrt((Change_y * Change_y + Change_x * Change_x));
-
-            glBegin(GL_TRIANGLES);
-                glColor3f(1.0f, 0.0f, 0.0f);
-                glVertex2f(center_x + Radi,   center_y + Radi);
-
-                glVertex2f(center_x - Radi,  center_y);
-
-                glVertex2f(center_x , center_y - Radi);
-
-            glEnd();
-}
-
-
-
-//Структура для Птицы
-
-typedef struct
-{
-    float x, y;
-
-    float dx, dy;
-} Boid;
-
-
-//Создадим саму птицу
-Boid bird;
-
-//Иницилизация объекта типа Boid
-
-void Boid_Init(Boid *obj, float x1, float y1, float dx1, float dy1)
-{
-    obj->x = x1;
-    obj->y = y1;
-    obj->dx = dx1;
-    obj->dy = dy1;
-    //obj->x = x1;
-
-}
-
-//Процедура рисовки птицы
-void Boid_Show(Boid obj)
-{
-    glPushMatrix();
-        glTranslatef(obj.x, obj.y, 0);
-        DrawTr(0, 0);
-
-    glPopMatrix();
-
-}
-
-void Boid_Move(Boid *obj)
-{
-    obj->x += obj->dx;
-    obj->y += obj->dy;
-
-
-
-    if(obj->y > + 1-0.05)
+    if(sqrt(dx*dx+dy*dy) > Max_Speed)
     {
-        Change_y = Change_y*(-1);
-        obj->y = + 1-0.05;
+        dx = dx*0.95;
+        dx = dx*0.95;
+        Fun_Speed(dx, dy);
     }
-    if(obj->x > + koef-0.05)
-   {
-        Change_x = Change_x*(-1);
-        obj->x = + koef-0.05;
-    }
-
-
-    if(obj->y < - 1+0.05)
-    {
-        Change_y = Change_y*(-1);
-        obj->y = - 1+0.05;
-    }
-    if(obj->x < - koef + 0.05)
-    {
-        Change_x = Change_x*(-1);
-        obj->x = - koef+0.05;
-    }
-
-
-obj->dy = Change_y;
-obj->dx = Change_x;
-
 }
 
-//Иницилизация игры и туда птичку
-void Game_Init()
+float Distance_fun(float X1, float X2, float Y1, float Y2)
 {
-        Boid_Init(&bird, 0, 0, 0, 0);
-
-
+    return sqrt(pow(X2 - X1, 2) + pow(Y2 - Y1, 2));
 }
 
 
 
-
-
-
-
-int WINAPI WinMain(HINSTANCE hInstance,
-                   HINSTANCE hPrevInstance,
-                   LPSTR lpCmdLine,
-                   int nCmdShow)
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     WNDCLASSEX wcex;
     HWND hwnd;
@@ -136,7 +49,151 @@ int WINAPI WinMain(HINSTANCE hInstance,
     HGLRC hRC;
     MSG msg;
     BOOL bQuit = FALSE;
-    float theta = 0.0f;
+
+    //draw a triangle
+    void DrawTr(int center_x, int center_y, float dx, float dy)
+    {
+        glBegin(GL_POINTS);
+            for(int i=0; i < 360; i++)
+                glVertex2f(Vision*cos(2*3.14159*i/360),Vision*sin(2*3.14159*i/360));
+        glEnd();
+
+        glBegin(GL_TRIANGLES);
+            glColor3f(1.0f, 0.0f, 0.0f);
+            glVertex2f(center_x ,   center_y + Radi);
+            glVertex2f(center_x - Radi,  center_y - Radi);
+            glVertex2f(center_x + Radi , center_y - Radi);
+        glEnd();
+
+        glLineWidth(3);
+        glBegin(GL_LINES);
+            glColor3d(0,1,0);     // green
+            glVertex2f(center_x, center_y);
+            glVertex2f(center_x + dx*4, center_x + dy*4);
+        glEnd();
+    }
+
+//struct for boid
+    typedef struct
+    {
+        float x, y;
+        float dx, dy;
+        float ddx, ddy;
+    } Boid;
+
+//name boid - bird
+    Boid bird[Cout];
+
+//function Separation
+    void Func_Ottalkivanie(Boid *Bird1, Boid *Bird2, float Distance)
+{
+    Bird1->ddx += (Bird1->x - Bird2->x)*7*((Vision - Distance)/Vision);
+
+    Bird1->ddy += (Bird1->y - Bird2->y)*7*((Vision - Distance)/Vision);
+}
+
+//function Alignment
+    void Func_Sonapravlenie(Boid *Bird, float Alig_X, float Alig_Y)
+{
+    Bird->ddx += Alig_X;
+
+    Bird->ddy += Alig_Y;
+}
+
+//function Cohesion
+void Func_Midle_hip (Boid *Bird, float X, float Y)
+{
+    Bird->ddx += X;
+
+    Bird->ddy += Y;
+}
+
+
+//Initializing an object of type Boid
+
+    void Boid_Init(Boid *obj, float x1, float y1,  float dx1, float dy1,  float ddx1, float ddy1)
+    {
+        obj->x = x1;
+        obj->y = y1;
+        obj->dx = dx1;
+        obj->dy = dy1;
+        obj->ddx = ddx1;
+        obj->ddy = ddy1;
+    }
+
+//The procedure of drawing a Boid
+    void Boid_Show(Boid obj)
+    {
+        glPushMatrix();
+        glTranslatef(obj.x, obj.y, 0);
+        DrawTr(0, 0, obj.dx, obj.dy);
+        glPopMatrix();
+    }
+
+//The movement procedure of Boid
+    void Boid_Move(Boid *obj)
+    {
+        if(obj->ddx != 0)
+        {
+            obj->dx += obj->ddx/60;
+            obj->ddx = 0;
+        }
+
+        if(obj->ddy != 0)
+        {
+            obj->dy += obj->ddy/60;
+            obj->ddy = 0;
+        }
+
+//speed normalization
+        while(sqrt(obj->dx*obj->dx + obj->dy*obj->dy) > Max_Speed)
+        {
+            obj->dx = obj->dx*0.95;
+            obj->dy = obj->dy*0.95;
+        }
+
+
+        obj->x += obj->dx;
+        obj->y += obj->dy;
+
+        //condition of edge
+        if(obj->y > + 2-Radi)
+        {
+            obj->dy = obj->dy*(-1);
+            obj->y = + 2-Radi;
+        }
+
+        if(obj->x > + 2-Radi)
+        {
+            obj->dx = obj->dx*(-1);
+            obj->x = + 2 -Radi;
+        }
+
+
+        if(obj->y < Radi)
+        {
+            obj->dy = obj->dy*(-1);
+            obj->y = +Radi;
+        }
+
+        if(obj->x <  + Radi)
+        {
+            obj->dx = obj->dx*(-1);
+            obj->x = + Radi;
+        }
+    }
+
+//Initialization of the game
+    void Game_Init()
+    {
+        for(int k = 0; k < Cout; k++)
+        {
+            Boid_Init(&bird[k], (float) rand()/RAND_MAX*(1) + 0,
+                  (float) rand()/RAND_MAX,
+                  ((float) 1.*2*rand()/RAND_MAX - 1) / 100,
+                  ((float) 1.*2*rand()/RAND_MAX - 1) / 100, 0 ,0);
+        }
+    }
 
     /* register window class */
     wcex.cbSize = sizeof(WNDCLASSEX);
@@ -163,8 +220,8 @@ int WINAPI WinMain(HINSTANCE hInstance,
                           WS_OVERLAPPEDWINDOW,
                           CW_USEDEFAULT,
                           CW_USEDEFAULT,
-                          width,
-                          height,
+                          800,
+                          800,
                           NULL,
                           NULL,
                           hInstance,
@@ -174,17 +231,13 @@ int WINAPI WinMain(HINSTANCE hInstance,
 
     /* enable OpenGL for the window */
     EnableOpenGL(hwnd, &hDC, &hRC);
-    koef = (float)width / height;
 
-   // glScalef( 1/koef, 1, 1);
-   // printf("%f", koef);
-
-
+    //zoom in to 2 on X and Y
+    glScalef(1, 1, 1);
+    glTranslated(-1, -1, 0);
 
     Game_Init();
 
-
-    //главный цикл
     /* program main loop */
     while (!bQuit)
     {
@@ -209,23 +262,96 @@ int WINAPI WinMain(HINSTANCE hInstance,
             glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             glClear(GL_COLOR_BUFFER_BIT);
 
-            Boid_Move(&bird);
+            for(int k = 0; k < Cout; k++) //Cout - how many birds
 
-            // glColor3f(1, 1, 0);//однотонный цвет желтый
-            //DrawTr(1 , 0);
-            Boid_Show(bird);
+                Boid_Show(bird[k]); //Draw
+
+            for(int i = 0; i < Cout; i++)
+            {
+                Alig_X = 0;
+                Alig_Y = 0;
+                Average_Alig_X = 0;
+                Average_Alig_Y = 0;
+                In_Vision = 0;
+
+
+                float Midle_X = 0;
+                float Midle_Y = 0;
+
+                float Distance;
+                float Min_Distance = 0;
+                int Index = -1; //РёРЅРґРµРєСЃ Р±Р»РёР¶Р°Р№С€РєРµР№ РїС‚РёС‡РєРё РѕС‚ I
+                int Flag = 0; //РїРµСЂРІР°СЏ РјРёРЅРёРјР°Р»СЊРЅР°СЏ РґРёСЃС‚Р°РЅС†РёСЏ
+                for(int j = 0; j < Cout; j++)
+                {
+                //    printf("In_Vision = %d \n", In_Vision);
+                    if(i != j)
+                    {
+                        Distance = Distance_fun(bird[j].x , bird[i].x, bird[j].y, bird[i].y);
+                   // printf("Distance = %f\n", Distance);
+                        if(Distance < Vision)
+                        {
+                            Alig_X = Alig_X + bird[j].dx;
+                            Alig_Y = Alig_Y + bird[j].dy;
+                            In_Vision++;
+
+                         //========================================================
+
+                            if(Flag == 0)
+                            {
+                                Index = j;
+                                Flag++;
+                                Min_Distance = Distance;
+
+                                Midle_X = bird[j].x - bird[i].x;
+                                Midle_Y = bird[j].y - bird[i].y;
+                            }
+                            else
+                            {
+                                Midle_X  = (Midle_X * (In_Vision - 1) + bird[j].x - bird[i].x)/In_Vision;
+                                Midle_Y = (Midle_Y * (In_Vision - 1) + bird[j].y - bird[i].y)/In_Vision;
+                            }
+
+                            if(Min_Distance > Distance)
+                            {
+                                Min_Distance = Distance;
+                                Index = j;
+                            }
+
+                            //=====================================================
+                        }
+                    }
+                }
+
+                Func_Midle_hip(&bird[i], Midle_X, Midle_Y);
+
+//============================================
+
+                if(In_Vision != 0 )
+                {
+                    Average_Alig_X = Alig_X / (In_Vision);
+                    Average_Alig_Y = Alig_Y / (In_Vision);
+
+                    Func_Sonapravlenie(&bird[i], Average_Alig_X, Average_Alig_Y);
+                }
+                else
+                      Func_Sonapravlenie(&bird[i], 0, 0);
+
+                //=======================================
+
+               if(Index != -1 )
+                    Func_Ottalkivanie(&bird[i], &bird[Index], Min_Distance);
+            }
 
 
 
 
-
-
-
+        for(int k = 0; k < Cout; k++)
+            Boid_Move(&bird[k]);
 
             SwapBuffers(hDC);
 
-            theta += 1.0f;
-            Sleep (1);
+            Sleep (10);
         }
     }
 
@@ -237,6 +363,7 @@ int WINAPI WinMain(HINSTANCE hInstance,
 
     return msg.wParam;
 }
+
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -304,4 +431,3 @@ void DisableOpenGL (HWND hwnd, HDC hDC, HGLRC hRC)
     wglDeleteContext(hRC);
     ReleaseDC(hwnd, hDC);
 }
-
